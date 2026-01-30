@@ -13,7 +13,7 @@ jobs:
     - name: Deploy/Run
       run: |
         # Copy binary to desired location or restart service
-        sudo cp target/release/NeoRust /home/volt/neo-rust/
+        cp target/release/NeoRust /home/volt/neo-rust/
         cd /home/volt/neo-rust/
         ./launch.sh
         # Or systemctl restart your-service (if systemd-managed)
