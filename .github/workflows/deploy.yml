@@ -6,22 +6,16 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     
-    - name: Cache Cargo dependencies and target  # NEW
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git/db
-          target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
-    
     - name: Build project
-      run: cargo +nightly build --release
+      run: |
+        cargo clean
+        cargo +nightly build --release
     
     - name: Deploy/Run
       run: |
         cp target/release/NeoRust /home/volt/neo-rust/
-        cd /home/volt/neo-rust/
-        nohup ./launch.sh > neo-rust.log 2>&1 &
+        chown volt:volt /home/volt/neo-rust/NeoRust
+        systemctl --user restart neorust.service
+        sleep 3
+        systemctl --user is-active neorust.service && echo "✅ Service running" || echo "❌ Service failed"
+
