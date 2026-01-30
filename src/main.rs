@@ -458,7 +458,6 @@ impl BotCommand {
                 for lp in loops_text.iter() {
                     println!("{}", lp);
                     tellraw(bot, &*lp, coords, Some(core.clone()), state).await?;
-                    bot.chat("Hi");
                 }
             }
 
