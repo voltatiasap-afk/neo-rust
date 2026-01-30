@@ -1,19 +1,27 @@
-name: Build and Deploy
-on: [push]  # Triggers on every commit
+on: [push]
 
 jobs:
   deploy:
-    runs-on: self-hosted  # Uses your local runner
+    runs-on: self-hosted
     steps:
     - uses: actions/checkout@v4
     
+    - name: Cache Cargo dependencies and target  # NEW
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git/db
+          target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+    
     - name: Build project
-      run: cargo +nightly build --release # Replace with your bin target[web:1]
+      run: cargo +nightly build --release
     
     - name: Deploy/Run
       run: |
-        # Copy binary to desired location or restart service
         cp target/release/NeoRust /home/volt/neo-rust/
         cd /home/volt/neo-rust/
         ./launch.sh
-        # Or systemctl restart your-service (if systemd-managed)
