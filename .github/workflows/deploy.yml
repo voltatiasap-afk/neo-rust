@@ -1,17 +1,20 @@
 on: [push]
-
 jobs:
   deploy:
     runs-on: self-hosted
     steps:
     - uses: actions/checkout@v4
     
+    - name: Setup Rust nightly
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: nightly
+        
     - name: Cache Rust build
       uses: Swatinem/rust-cache@v2
 
     - name: Build project
-      run: |
-        cargo +nightly build --release
+      run: cargo +nightly build --release
 
     - name: Deploy/Run
       run: |
@@ -20,3 +23,4 @@ jobs:
         chown volt:volt /home/volt/neo-rust/NeoRust.new
         mv /home/volt/neo-rust/NeoRust.new /home/volt/neo-rust/NeoRust
         systemctl --user restart neorust.service
+        sleep 3
