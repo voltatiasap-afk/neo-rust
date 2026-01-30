@@ -24,4 +24,4 @@ jobs:
       run: |
         cp target/release/NeoRust /home/volt/neo-rust/
         cd /home/volt/neo-rust/
-        ./launch.sh
+        nohup ./launch.sh > neo-rust.log 2>&1 &
