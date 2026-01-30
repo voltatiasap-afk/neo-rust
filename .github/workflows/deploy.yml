@@ -12,11 +12,11 @@ jobs:
     - name: Build project
       run: |
         cargo +nightly build --release
-    
+
     - name: Deploy/Run
       run: |
-        cp target/release/NeoRust /home/volt/neo-rust/
-        chown volt:volt /home/volt/neo-rust/NeoRust
+        systemctl --user stop neorust.service || true
+        mv target/release/NeoRust /home/volt/neo-rust/NeoRust.new
+        chown volt:volt /home/volt/neo-rust/NeoRust.new
+        mv /home/volt/neo-rust/NeoRust.new /home/volt/neo-rust/NeoRust
         systemctl --user restart neorust.service
-        sleep 3
-        systemctl --user is-active neorust.service && echo "✅ Service running" || echo "❌ Service failed"
