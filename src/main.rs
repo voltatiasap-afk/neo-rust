@@ -370,6 +370,8 @@ impl BotCommand {
                         state,
                     )
                     .await?;
+
+                    return Ok(());
                 }
                 if action == "start" {
                     println!("I JUST TRIED TO START A LOOP!!!!!");
