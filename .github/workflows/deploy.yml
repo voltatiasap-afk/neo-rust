@@ -8,12 +8,12 @@ jobs:
     - uses: actions/checkout@v4
     
     - name: Build project
-      run: cargo +nightly build # Replace with your bin target[web:1]
+      run: cargo +nightly build --release # Replace with your bin target[web:1]
     
     - name: Deploy/Run
       run: |
         # Copy binary to desired location or restart service
-        cp target/debug/NeoRust /home/volt/neo-rust/
+        cp target/release/NeoRust /home/volt/neo-rust/
         cd /home/volt/neo-rust/
         ./launch.sh
         # Or systemctl restart your-service (if systemd-managed)
