@@ -1,18 +1,23 @@
-steps:
-- uses: actions/checkout@v4
+on: [push]
 
-- name: Cache Rust build
-  uses: Swatinem/rust-cache@v2
-
-- name: Build project
-  run: |
-    cargo clean
-    cargo +nightly build --release
+jobs:
+  deploy:
+    runs-on: self-hosted
+    steps:
+    - uses: actions/checkout@v4
     
-- name: Deploy/Run
-  run: |
-    cp target/release/NeoRust /home/volt/neo-rust/
-    chown volt:volt /home/volt/neo-rust/NeoRust
-    systemctl --user restart neorust.service
-    sleep 3
-    systemctl --user is-active neorust.service && echo "✅ Service running" || echo "❌ Service failed"
+    - name: Cache Rust build
+      uses: Swatinem/rust-cache@v2
+
+    - name: Build project
+      run: |
+        cargo clean
+        cargo +nightly build --release
+    
+    - name: Deploy/Run
+      run: |
+        cp target/release/NeoRust /home/volt/neo-rust/
+        chown volt:volt /home/volt/neo-rust/NeoRust
+        systemctl --user restart neorust.service
+        sleep 3
+        systemctl --user is-active neorust.service && echo "✅ Service running" || echo "❌ Service failed"
