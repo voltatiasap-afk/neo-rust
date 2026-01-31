@@ -548,7 +548,7 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
                 bot.chat("/gmc")
             }
 
-            println!("{:#?} > {}", m.sender_uuid(), message);
+            println!("{}", m.message().to_ansi());
 
             if message.starts_with("n:") {
                 let parts: Vec<&str> = message[2..].trim().split_whitespace().collect();
