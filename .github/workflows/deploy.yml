@@ -83,6 +83,7 @@ jobs:
         
         # Deploy new binary atomically
         echo "🚀 Deploying new binary..."
-        mv target/release/NeoRust /home/volt/neo-rust/NeoRust.new
-        chown volt:volt /home/volt/neo-rust/NeoRust.new
-        mv /home/volt/neo-rust/Neo
+        mv target/release/NeoRust /home/volt/neo-rust/NeoRust
+        chown volt:volt /home/volt/neo-rust/NeoRust
+        sleep 2
+        systemctl --user start neorust.service
