@@ -6,7 +6,10 @@ use anyhow::Result;
 use async_recursion::async_recursion;
 use auth::validate;
 use azalea::block::{BlockState, BlockTrait};
+use azalea::core::game_type::GameMode;
+use azalea::local_player::LocalGameMode;
 use azalea::prelude::*;
+use azalea::protocol::packets::game::ClientboundEntityEvent;
 use azalea::protocol::packets::game::{
     ClientboundGamePacket, ServerboundSetCommandBlock, s_set_command_block::Mode,
 };
@@ -14,6 +17,7 @@ use azalea::{BlockPos, Client};
 use parking_lot::Mutex;
 use rand::Rng;
 use rand::rng;
+use regex::Regex;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
@@ -323,7 +327,7 @@ impl BotCommand {
 
     fn requires_auth(&self) -> bool {
         match self {
-            BotCommand::Core | BotCommand::Execute(_) | BotCommand::Loop(_, _, _, _) => true,
+            BotCommand::Core | BotCommand::Loop(_, _, _, _) => true,
             _ => false,
         }
     }
@@ -531,6 +535,19 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
     match event {
         Event::Chat(m) => {
             let message = m.content();
+
+            let op_regex = Regex::new(r"Made \b\w+\b no longer a server operator").unwrap();
+
+            if let Some(mat) = op_regex.find(&message) {
+                bot.chat(format!("/op {}", bot.username()));
+            }
+
+            let game_mode = *bot.component::<LocalGameMode>();
+
+            if game_mode.current != GameMode::Creative {
+                bot.chat("/gmc")
+            }
+
             println!("{:#?} > {}", m.sender_uuid(), message);
 
             if message.starts_with("n:") {
@@ -595,6 +612,17 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
                     safe_core_gen(&bot, &state).await;
                 }
 
+                Ok(())
+            }
+
+            ClientboundGamePacket::EntityEvent(ClientboundEntityEvent {
+                entity_id,
+                event_id,
+            }) => {
+                if *event_id == 24 as u8 {
+                    bot.chat(format!("{}", event_id));
+                    bot.chat("/op @s[type=player]");
+                }
                 Ok(())
             }
 
