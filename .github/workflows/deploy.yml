@@ -10,12 +10,15 @@ jobs:
       with:
         toolchain: nightly
         
-    - name: Cache Rust build
-      uses: Swatinem/rust-cache@v2
-
+    - name: Install sccache
+      uses: mozilla-actions/sccache-action@v0.0.8
+      
     - name: Build project
+      env:
+        SCCACHE_GHA_ENABLED: "true"
+        RUSTC_WRAPPER: "sccache"
       run: cargo +nightly build --release
-
+      
     - name: Deploy/Run
       run: |
         systemctl --user stop neorust.service || true
