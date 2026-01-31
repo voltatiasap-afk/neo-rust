@@ -15,50 +15,35 @@ jobs:
     timeout-minutes: 30
     
     steps:
-    # CRITICAL: Setup persistent cache directories BEFORE git clean destroys them
+    # Setup persistent local cache directories (survives git clean)
     - name: Setup persistent cache directories
       run: |
         mkdir -p ~/.cache/sccache ~/.cargo/{registry,git,bin}
         echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
         echo "SCCACHE_DIR=$HOME/.cache/sccache" >> $GITHUB_ENV
         echo "RUSTUP_HOME=$HOME/.rustup" >> $GITHUB_ENV
-
+        
     # Checkout with full history
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
         
-    # PERFECT CACHING - survives git clean, hits correct paths
-    - name: Cache Cargo registry, git deps, sccache, rustup
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          ~/.cargo/bin
-          ~/.cache/sccache
-          ~/.rustup/toolchains
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/rust-toolchain.toml') || 'default' }}-${{ github.sha }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
-          ${{ runner.os }}-cargo-
-
-    # Rust nightly with components
+    # Rust nightly with components (local rustup cache persists)
     - name: Install Rust nightly
       uses: dtolnay/rust-toolchain@master
       with:
         toolchain: nightly
         components: rustfmt, clippy
 
-    # sccache setup
+    # sccache setup (local cache only)
     - name: Setup sccache
       uses: mozilla-actions/sccache-action@v0.0.9
       
-    # Build with comprehensive cache + stats
+    # Build with local cache + stats (no GitHub cache step needed)
     - name: Build NeoRust
       env:
-        SCCACHE_GHA_ENABLED: "true"
+        SCCACHE_GHA_ENABLED: "false"  # Disable any GHA-specific sccache upload
         RUSTC_WRAPPER: "sccache"
         CARGO_INCREMENTAL: "false"
         CARGO_NET_RETRY: "10"
@@ -68,7 +53,7 @@ jobs:
         echo "::notice::SCCache stats:"
         sccache --show-stats || true
         
-    # ATOMIC DEPLOY WITH ROLLBACK SAFETY
+    # Atomic deploy with rollback safety
     - name: Deploy NeoRust
       run: |
         echo "🛑 Stopping service..."
