@@ -43,7 +43,7 @@ async fn main() -> anyhow::Result<()> {
 
     let _state = State {
         core_generator: Arc::new(tokio::sync::Mutex::new(Core::default())),
-        used_codes: Arc::new(Mutex::new(Vec::new())),
+        used_codes: Arc::new(tokio::sync::Mutex::new(Vec::new())),
         auth_users: Arc::new(Mutex::new(Vec::new())),
         loops: Arc::new(Mutex::new(Vec::new())),
         loops_text: Arc::new(Mutex::new(Vec::new())),
@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
 #[derive(Default, Clone, Component)]
 pub struct State {
     pub core_generator: Arc<tokio::sync::Mutex<Core>>,
-    pub used_codes: Arc<Mutex<Vec<u32>>>,
+    pub used_codes: Arc<tokio::sync::Mutex<Vec<u32>>>,
     pub auth_users: Arc<Mutex<Vec<String>>>,
     pub loops: Arc<Mutex<Vec<Arc<AtomicI32>>>>,
     pub loops_text: Arc<Mutex<Vec<String>>>,
@@ -217,7 +217,7 @@ async fn tellraw(
     Ok(())
 }
 
-fn login(
+async fn login(
     uuid: String,
     code: String,
     codes: &mut Vec<u32>,
@@ -229,9 +229,7 @@ fn login(
             let mut guard = state.auth_users.lock();
             guard.push(uuid)
         };
-
-        code.parse::<u32>();
-
+        add_to_used_codes(code.parse::<u32>().unwrap_or(0), state).await;
         true
     } else {
         false
@@ -353,7 +351,7 @@ impl BotCommand {
 
         match &self {
             BotCommand::Core => {
-                core.gen_core(bot, state).await?;
+                //core.gen_core(bot, state).await?;
             }
 
             BotCommand::Info => {
@@ -483,7 +481,7 @@ impl BotCommand {
             }
 
             BotCommand::Login(code) => {
-                if login(sender_uid, code.clone(), codes, authenticated, state) {
+                if login(sender_uid, code.clone(), &mut vec![], authenticated, state).await {
                     tellraw(
                         bot,
                         &"Succesfully authenticated".to_string(),
@@ -509,19 +507,14 @@ impl BotCommand {
     }
 }
 
-fn add_to_used_codes(code: u32, state: &State) {
+async fn add_to_used_codes(code: u32, state: &State) {
     let _ = {
-        let mut guard = state.used_codes.lock();
+        let mut guard = state.used_codes.lock().await;
         guard.push(code)
     };
 }
 
 async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
-    let mut codes = {
-        let guard = state.used_codes.lock();
-        guard.clone()
-    };
-
     let mut authenticated = {
         let guard = state.auth_users.lock();
         guard.clone()
@@ -530,6 +523,11 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
     let core = {
         let core_guard = state.core_generator.lock().await;
         core_guard.clone()
+    };
+
+    let mut codes = {
+        let guard = state.used_codes.lock().await;
+        guard.clone()
     };
 
     match event {
