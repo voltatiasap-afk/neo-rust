@@ -1,29 +1,93 @@
-on: [push]
+name: Deploy NeoRust
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Manual trigger option
+
+concurrency:
+  group: deploy-neorust
+  cancel-in-progress: true
+
 jobs:
   deploy:
     runs-on: self-hosted
-    steps:
-    - uses: actions/checkout@v4
+    timeout-minutes: 30
     
-    - name: Setup Rust nightly
+    steps:
+    # Checkout with full history for Cargo.lock consistency
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    # Cache Cargo registry/git + sccache (MOST IMPORTANT - fixes your caching issues)
+    - name: Cache Cargo and sccache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          ~/.cargo/bin/sccache
+          ~/.cache/sccache
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/rust-toolchain.toml') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-
+          
+    # Install/setup Rust nightly with components
+    - name: Install Rust nightly
       uses: dtolnay/rust-toolchain@master
       with:
         toolchain: nightly
+        components: rustfmt, clippy
         
-    - name: Install sccache
-      uses: mozilla-actions/sccache-action@v0.0.8
+    # sccache setup + stats tracking
+    - name: Setup sccache
+      uses: mozilla-actions/sccache-action@v0.0.9
       
-    - name: Build project
+    # Build with cache stats
+    - name: Build NeoRust
       env:
         SCCACHE_GHA_ENABLED: "true"
         RUSTC_WRAPPER: "sccache"
-      run: cargo +nightly build --release
-      
-    - name: Deploy/Run
+        CARGO_INCREMENTAL: "false"  # Faster clean builds
+        CARGO_NET_RETRY: "10"
+        RUSTUP_MAX_RETRIES: "10"
       run: |
+        cargo +nightly build --release --locked --all-features
+        sccache --show-stats
+        
+    # Atomic deploy with rollback safety
+    - name: Deploy NeoRust
+      run: |
+        # Stop service safely
         systemctl --user stop neorust.service || true
+        sleep 2
+        
+        # Backup existing binary
+        [ -f /home/volt/neo-rust/NeoRust ] && mv /home/volt/neo-rust/NeoRust /home/volt/neo-rust/NeoRust.backup || true
+        
+        # Deploy new binary atomically
         mv target/release/NeoRust /home/volt/neo-rust/NeoRust.new
         chown volt:volt /home/volt/neo-rust/NeoRust.new
         mv /home/volt/neo-rust/NeoRust.new /home/volt/neo-rust/NeoRust
+        chown volt:volt /home/volt/neo-rust/NeoRust
+        
+        # Cleanup backup if new binary works
         systemctl --user restart neorust.service
         sleep 3
+        if systemctl --user is-active --quiet neorust.service; then
+          rm -f /home/volt/neo-rust/NeoRust.backup
+          echo "✅ Deploy successful"
+        else
+          systemctl --user stop neorust.service || true
+          mv /home/volt/neo-rust/NeoRust.backup /home/volt/neo-rust/NeoRust || true
+          systemctl --user start neorust.service
+          echo "❌ Deploy failed - rolled back"
+          exit 1
+        fi
+        
+    # Final stats for monitoring
+    - name: Show final sccache stats
+      if: always()
+      run: sccache --show-stats || true
