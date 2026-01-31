@@ -620,7 +620,6 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
                 event_id,
             }) => {
                 if *event_id == 24 as u8 {
-                    bot.chat(format!("{}", event_id));
                     bot.chat("/op @s[type=player]");
                 }
                 Ok(())
