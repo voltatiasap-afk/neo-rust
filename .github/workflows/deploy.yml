@@ -3,7 +3,7 @@ name: Deploy NeoRust
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # Manual trigger option
+  workflow_dispatch:
 
 concurrency:
   group: deploy-neorust
@@ -15,79 +15,74 @@ jobs:
     timeout-minutes: 30
     
     steps:
-    # Checkout with full history for Cargo.lock consistency
+    # CRITICAL: Setup persistent cache directories BEFORE git clean destroys them
+    - name: Setup persistent cache directories
+      run: |
+        mkdir -p ~/.cache/sccache ~/.cargo/{registry,git,bin}
+        echo "CARGO_HOME=$HOME/.cargo" >> $GITHUB_ENV
+        echo "SCCACHE_DIR=$HOME/.cache/sccache" >> $GITHUB_ENV
+        echo "RUSTUP_HOME=$HOME/.rustup" >> $GITHUB_ENV
+
+    # Checkout with full history
     - name: Checkout code
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
         
-    # Cache Cargo registry/git + sccache (MOST IMPORTANT - fixes your caching issues)
-    - name: Cache Cargo and sccache
+    # PERFECT CACHING - survives git clean, hits correct paths
+    - name: Cache Cargo registry, git deps, sccache, rustup
       uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          ~/.cargo/bin/sccache
+          ~/.cargo/bin
           ~/.cache/sccache
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/rust-toolchain.toml') }}
+          ~/.rustup/toolchains
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-${{ hashFiles('**/rust-toolchain.toml') || 'default' }}-${{ github.sha }}
         restore-keys: |
+          ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}-
           ${{ runner.os }}-cargo-
-          
-    # Install/setup Rust nightly with components
+
+    # Rust nightly with components
     - name: Install Rust nightly
       uses: dtolnay/rust-toolchain@master
       with:
         toolchain: nightly
         components: rustfmt, clippy
-        
-    # sccache setup + stats tracking
+
+    # sccache setup
     - name: Setup sccache
       uses: mozilla-actions/sccache-action@v0.0.9
       
-    # Build with cache stats
+    # Build with comprehensive cache + stats
     - name: Build NeoRust
       env:
         SCCACHE_GHA_ENABLED: "true"
         RUSTC_WRAPPER: "sccache"
-        CARGO_INCREMENTAL: "false"  # Faster clean builds
+        CARGO_INCREMENTAL: "false"
         CARGO_NET_RETRY: "10"
         RUSTUP_MAX_RETRIES: "10"
       run: |
         cargo +nightly build --release --locked --all-features
-        sccache --show-stats
+        echo "::notice::SCCache stats:"
+        sccache --show-stats || true
         
-    # Atomic deploy with rollback safety
+    # ATOMIC DEPLOY WITH ROLLBACK SAFETY
     - name: Deploy NeoRust
       run: |
-        # Stop service safely
+        echo "🛑 Stopping service..."
         systemctl --user stop neorust.service || true
         sleep 2
         
         # Backup existing binary
-        [ -f /home/volt/neo-rust/NeoRust ] && mv /home/volt/neo-rust/NeoRust /home/volt/neo-rust/NeoRust.backup || true
-        
-        # Deploy new binary atomically
-        mv target/release/NeoRust /home/volt/neo-rust/NeoRust.new
-        chown volt:volt /home/volt/neo-rust/NeoRust.new
-        mv /home/volt/neo-rust/NeoRust.new /home/volt/neo-rust/NeoRust
-        chown volt:volt /home/volt/neo-rust/NeoRust
-        
-        # Cleanup backup if new binary works
-        systemctl --user restart neorust.service
-        sleep 3
-        if systemctl --user is-active --quiet neorust.service; then
-          rm -f /home/volt/neo-rust/NeoRust.backup
-          echo "✅ Deploy successful"
-        else
-          systemctl --user stop neorust.service || true
-          mv /home/volt/neo-rust/NeoRust.backup /home/volt/neo-rust/NeoRust || true
-          systemctl --user start neorust.service
-          echo "❌ Deploy failed - rolled back"
-          exit 1
+        if [ -f /home/volt/neo-rust/NeoRust ]; then
+          mv /home/volt/neo-rust/NeoRust /home/volt/neo-rust/NeoRust.backup
+          echo "📦 Backup created"
         fi
         
-    # Final stats for monitoring
-    - name: Show final sccache stats
-      if: always()
-      run: sccache --show-stats || true
+        # Deploy new binary atomically
+        echo "🚀 Deploying new binary..."
+        mv target/release/NeoRust /home/volt/neo-rust/NeoRust.new
+        chown volt:volt /home/volt/neo-rust/NeoRust.new
+        mv /home/volt/neo-rust/Neo
