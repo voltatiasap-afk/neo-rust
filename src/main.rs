@@ -111,10 +111,6 @@ impl Core {
         );
         bot.chat(&command);
 
-        println!(
-            "New coordinates from gen_core_sync just dropped baby {:?}",
-            self.core_coordinates.clone()
-        );
         Ok(self.core_coordinates.clone())
     }
 }
@@ -131,8 +127,6 @@ async fn execute(
         let guard = state.core_generator.lock().await;
         guard.core_coordinates.clone()
     };
-
-    println!("{:?}", &coords);
 
     let mut core = state.core_generator.lock().await;
 
@@ -172,8 +166,6 @@ async fn execute(
         };
 
         if needs_regen {
-            println!("could not exec bc not cblock");
-            println!("{:?}", block.id().to_string());
             let _ = core.gen_core_sync(bot);
             return Ok(());
         } else {
@@ -393,7 +385,6 @@ impl BotCommand {
                     )
                     .await;
 
-                    println!("THIS IS AFTER THE THING U SAID IS BUGGED!!!");
                     let _ = {
                         let mut loops = state.loops.lock();
                         let mut loop_text = state.loops_text.lock();
@@ -597,6 +588,18 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
                 guard.gen_core_sync(&bot);
             };
             Ok(())
+        }
+
+        Event::RemovePlayer(p) => {
+            let _ = {
+                let mut authed = state.auth_users.lock();
+
+                if authed.contains(&p.uuid.to_string()) {
+                    authed.retain(|x| x != &p.uuid.to_string());
+                };
+            };
+
+            return Ok(());
         }
 
         Event::Packet(packet) => match &*packet {
