@@ -462,7 +462,15 @@ impl BotCommand {
             }
 
             BotCommand::Help => {
-                tellraw(bot, &"WIP".to_string(), coords, Some(core), state).await?;
+                tellraw(
+                    bot,
+                    &"Requires authentication:\nloop, core, disable\n\nPublic:\nexe, help, info"
+                        .to_string(),
+                    coords,
+                    Some(core),
+                    state,
+                )
+                .await?;
             }
 
             BotCommand::Kick(user) => {
