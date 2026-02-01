@@ -224,7 +224,12 @@ async fn login(
     _users: &mut Vec<String>,
     state: &State,
 ) -> bool {
-    if validate(&format!("{}", code), codes) {
+    let mut codes = {
+        let guard = state.used_codes.lock().await;
+        guard.clone()
+    };
+
+    if validate(&format!("{}", code), &mut codes) {
         let _ = {
             let mut guard = state.auth_users.lock();
             guard.push(uuid)
