@@ -350,7 +350,14 @@ impl BotCommand {
             }
 
             BotCommand::Info => {
-                bot.chat("WIP rust rewrite for neo");
+                tellraw(
+                    bot,
+                    &"https://discord.gg/9zSgbreY".to_string(),
+                    coords,
+                    None,
+                    state,
+                )
+                .await;
             }
 
             BotCommand::Light(user) => {
@@ -561,7 +568,9 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
                 bot.chat("/gmc")
             }
 
-            webhook_send(format!("{}", m.message())).await;
+            if !message.contains("Command set: ") {
+                webhook_send(format!("{}", m.message())).await;
+            }
 
             if message.starts_with("n:") {
                 let parts: Vec<&str> = message[2..].trim().split_whitespace().collect();
