@@ -1,5 +1,6 @@
 #![recursion_limit = "10024"]
 mod auth;
+mod discord;
 
 use anyhow::Ok;
 use anyhow::Result;
@@ -14,6 +15,7 @@ use azalea::protocol::packets::game::{
     ClientboundGamePacket, ServerboundSetCommandBlock, s_set_command_block::Mode,
 };
 use azalea::{BlockPos, Client};
+use discord::webhook_send;
 use parking_lot::Mutex;
 use rand::Rng;
 use rand::rng;
@@ -542,7 +544,7 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
                 bot.chat("/gmc")
             }
 
-            println!("{}", m.message().to_ansi());
+            webhook_send(format!("{}", m.message())).await;
 
             if message.starts_with("n:") {
                 let parts: Vec<&str> = message[2..].trim().split_whitespace().collect();
