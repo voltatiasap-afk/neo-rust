@@ -92,7 +92,7 @@ impl Core {
             bot_pos.z + 2
         );
 
-        execute(bot, &self.core_coordinates, &command, None, state).await?;
+        execute(bot, &command, state).await?;
         Ok(self.core_coordinates.clone())
     }
 
@@ -118,13 +118,7 @@ impl Core {
 }
 
 #[async_recursion]
-async fn execute(
-    bot: &Client,
-    coords_old: &Vec<BlockPos>,
-    command: &String,
-    core_old: Option<Core>,
-    state: &State,
-) -> anyhow::Result<()> {
+async fn execute(bot: &Client, command: &String, state: &State) -> anyhow::Result<()> {
     let coords = {
         let guard = state.core_generator.lock().await;
         guard.core_coordinates.clone()
@@ -206,7 +200,7 @@ async fn tellraw(
         msg = &message
     );
 
-    execute(bot, coords, &tellraw, core, state).await?;
+    execute(bot, &tellraw, state).await?;
 
     Ok(())
 }
@@ -248,7 +242,7 @@ impl CbLoop {
             if self.id_ref.load(Ordering::Relaxed) < 0 {
                 return Err(anyhow::anyhow!("must be positive"));
             }
-            execute(bot, coords, &self.command, None, state).await?;
+            execute(bot, &self.command, state).await?;
             tokio::time::sleep(Duration::from_millis(self.delay)).await;
         }
     }
@@ -296,6 +290,7 @@ enum BotCommand {
     Login(String),
     Kick(String),
     Loops,
+    Light(String),
 }
 
 impl BotCommand {
@@ -318,6 +313,7 @@ impl BotCommand {
             "tellraw" => BotCommand::Tellraw(args),
             "login" => BotCommand::Login(args),
             "loops" => BotCommand::Loops,
+            "light" => BotCommand::Light(args),
             _ => BotCommand::Help,
         }
     }
@@ -355,6 +351,11 @@ impl BotCommand {
 
             BotCommand::Info => {
                 bot.chat("WIP rust rewrite for neo");
+            }
+
+            BotCommand::Light(user) => {
+                let command = format!("effect give {} night_vision infinite 0 true", user);
+                execute(bot, &command, state).await;
             }
 
             BotCommand::Loop(action, id, delay, command) => {
@@ -451,7 +452,7 @@ impl BotCommand {
                     state,
                 )
                 .await?;
-                execute(bot, &coords_upd, &cmd, Some(core_upd.clone()), state).await?;
+                execute(bot, &cmd, state).await?;
             }
 
             BotCommand::Loops => {
@@ -464,10 +465,18 @@ impl BotCommand {
             BotCommand::Help => {
                 tellraw(
                     bot,
-                    &"Requires authentication:\nloop, core, disable\n\nPublic:\nexe, help, info"
-                        .to_string(),
+                    &"Requires authentication:\nloop, core, disable\n".to_string(),
                     coords,
                     Some(core),
+                    state,
+                )
+                .await?;
+
+                tellraw(
+                    bot,
+                    &"Public:\nexe, help, info, light".to_string(),
+                    coords,
+                    None,
                     state,
                 )
                 .await?;
@@ -479,7 +488,7 @@ impl BotCommand {
                     "/give {} diamond_hoe[minecraft:custom_name='ඞ{}']",
                     user, repeated
                 );
-                execute(bot, coords, &custom_name, Some(core.clone()), state).await?;
+                execute(bot, &custom_name, state).await?;
             }
 
             BotCommand::Tellraw(msg) => {
