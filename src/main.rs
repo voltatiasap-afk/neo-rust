@@ -255,11 +255,6 @@ async fn new_loop(
     delay: u64,
     state: &State,
 ) -> (i32, Arc<AtomicI32>, String) {
-    if id <= 0 {
-        println!("dumbass id must be positive");
-        return (-1, Arc::new(AtomicI32::new(-1)), "".to_string());
-    }
-
     let highest_id = {
         let guard = state.loops.lock();
         guard.clone().len() + 1
