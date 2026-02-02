@@ -7,6 +7,7 @@ use anyhow::Result;
 use async_recursion::async_recursion;
 use auth::validate;
 use azalea::block::{BlockState, BlockTrait};
+use azalea::bot;
 use azalea::core::game_type::GameMode;
 use azalea::local_player::LocalGameMode;
 use azalea::prelude::*;
@@ -16,13 +17,24 @@ use azalea::protocol::packets::game::{
 };
 use azalea::{BlockPos, Client};
 use discord::webhook_send;
+use discord_webhook_rs::{Error, Webhook};
 use parking_lot::Mutex;
 use rand::Rng;
 use rand::rng;
 use regex::Regex;
+use serenity::async_trait;
+use serenity::model::channel::Message;
+use serenity::model::gateway::Ready;
+use serenity::prelude::*;
+use serenity::{
+    async_trait, client::Context as DiscordCtx, model::channel::Message as DiscordMessage,
+    model::gateway::Ready, prelude::*,
+};
+use std::env;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
+use tokio;
 use tokio::time::sleep;
 
 #[tokio::main(flavor = "current_thread")]
@@ -53,7 +65,12 @@ async fn main() -> anyhow::Result<()> {
 
     let account = Account::offline(&random_str);
 
-    ClientBuilder::new()
+    let discord_bridge = DiscordHandler {
+        minecraft_bot: bot,
+        state: _state.clone(),
+    };
+
+    let (bot) = ClientBuilder::new()
         .set_handler(handle)
         .start(account, server)
         .await;
@@ -685,4 +702,37 @@ async fn safe_core_gen(bot: &Client, state: &State) {
         let _ = guard.gen_core(bot, state).await;
         ()
     };
+}
+
+struct DiscordHandler {
+    minecraft_bot: Arc<Client>,
+    state: Arc<State>,
+}
+
+#[serenity::async_trait]
+impl EventHandler for DiscordHandler {
+    async fn message(&self, ctx: DiscordCtx, msg: DiscordMessage) {
+        if msg.author.bot || msg.guild_id.is_none() {
+            return;
+        }
+
+        let username = msg.author.name;
+        let content = msg.content.clone();
+
+        let mc_message = format!("<{}>: {}", username, content);
+
+        let coords = {
+            let guard = self.state.core_generator.lock().await;
+            guard.core_coordinates.clone()
+        };
+
+        if let Err(e) = tellraw(&self.minecraft_bot, &mc_message, &coords, None, &self.state).await
+        {
+            println!("could not send message: {:?}", e);
+        }
+    }
+
+    async fn ready(&self, _: DiscordCtx, ready: serenity::model::gateway::Ready) {
+        println!("discord logged in", ready.user.name);
+    }
 }
