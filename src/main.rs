@@ -261,8 +261,16 @@ async fn new_loop(
         return (-1, Arc::new(AtomicI32::new(-1)), "".to_string());
     }
 
-    let id_ref = Arc::new(AtomicI32::new(id));
-    let text: String = format!("ID: {}, Command: {}, Delay: {}", &id, &command, &delay);
+    let highest_id = {
+        let guard = state.loops.lock();
+        guard.clone().len() + 1
+    };
+
+    let id_ref = Arc::new(AtomicI32::new(highest_id as i32));
+    let text: String = format!(
+        "ID: {}, Command: {}, Delay: {}",
+        &highest_id, &command, &delay
+    );
 
     let cb_loop = CbLoop {
         id_ref: id_ref.clone(),
@@ -273,7 +281,7 @@ async fn new_loop(
 
     let clone_state = state.clone();
     tokio::spawn(async move { cb_loop.start(&bot, &coords, &clone_state).await });
-    (id, id_ref, text)
+    (highest_id as i32, id_ref, text)
 }
 
 fn stop_loop(id_ref: Arc<AtomicI32>) {
@@ -284,11 +292,12 @@ enum BotCommand {
     Help,
     Info,
     Core,
-    Loop(String, String, String, String),
+    Loop(String, String, String),
     Execute(String),
     Tellraw(String),
     Login(String),
     Kick(String),
+    Disable(String),
     Loops,
     Light(String),
 }
@@ -305,22 +314,22 @@ impl BotCommand {
             "exe" => BotCommand::Execute(args),
             "loop" => BotCommand::Loop(
                 parts[1].to_string(),
-                parts[2].to_string(),
-                parts.get(3).unwrap_or(&"0").to_string(),
-                parts.get(4..).unwrap_or(&[]).join(" ").to_string(),
+                parts.get(2).unwrap_or(&"0").to_string(),
+                parts.get(3..).unwrap_or(&[]).join(" ").to_string(),
             ),
             "kick" => BotCommand::Kick(args),
             "tellraw" => BotCommand::Tellraw(args),
             "login" => BotCommand::Login(args),
             "loops" => BotCommand::Loops,
             "light" => BotCommand::Light(args),
+            "disable" => BotCommand::Disable(args),
             _ => BotCommand::Help,
         }
     }
 
     fn requires_auth(&self) -> bool {
         match self {
-            BotCommand::Core | BotCommand::Loop(_, _, _, _) => true,
+            BotCommand::Core | BotCommand::Loop(_, _, _) => true,
             _ => false,
         }
     }
@@ -360,15 +369,19 @@ impl BotCommand {
                 .await;
             }
 
+            BotCommand::Disable(user) => {
+                tellraw(bot, &"Coming soon".to_string(), coords, None, state).await;
+            }
+
             BotCommand::Light(user) => {
                 let command = format!("effect give {} night_vision infinite 0 true", user);
                 execute(bot, &command, state).await;
             }
 
-            BotCommand::Loop(action, id, delay, command) => {
+            BotCommand::Loop(action, delay, command) => {
                 if loops
                     .iter()
-                    .any(|h| h.load(Ordering::Relaxed) == id.parse::<i32>().unwrap())
+                    .any(|h| h.load(Ordering::Relaxed) == delay.parse::<i32>().unwrap())
                     && action != "stop"
                 {
                     tellraw(
@@ -388,7 +401,7 @@ impl BotCommand {
                     let (id_num, handle, text) = new_loop(
                         Arc::new(bot.clone()),
                         Arc::new(coords.clone()),
-                        id.parse::<i32>().unwrap(),
+                        3,
                         command.clone(),
                         delay.parse::<u64>().unwrap(),
                         state,
@@ -410,7 +423,7 @@ impl BotCommand {
                     )
                     .await?;
                 } else if action == "stop" {
-                    let target_id = id.parse::<i32>().unwrap();
+                    let target_id = delay.parse::<i32>().unwrap();
 
                     if let Some(pos) = loops
                         .iter()
