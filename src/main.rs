@@ -251,7 +251,6 @@ impl CbLoop {
 async fn new_loop(
     bot: Arc<Client>,
     coords: Arc<Vec<BlockPos>>,
-    id: i32,
     command: String,
     delay: u64,
     state: &State,
@@ -401,7 +400,6 @@ impl BotCommand {
                     let (id_num, handle, text) = new_loop(
                         Arc::new(bot.clone()),
                         Arc::new(coords.clone()),
-                        3,
                         command.clone(),
                         delay.parse::<u64>().unwrap(),
                         state,
