@@ -1,4 +1,5 @@
 #![recursion_limit = "10024"]
+
 mod auth;
 mod discord;
 
@@ -6,7 +7,7 @@ use anyhow::Ok;
 use anyhow::Result;
 use async_recursion::async_recursion;
 use auth::validate;
-use azalea::block::{BlockState, BlockTrait};
+use azalea::block::BlockState;
 use azalea::core::game_type::GameMode;
 use azalea::local_player::LocalGameMode;
 use azalea::prelude::*;
@@ -14,6 +15,7 @@ use azalea::protocol::packets::game::ClientboundEntityEvent;
 use azalea::protocol::packets::game::{
     ClientboundGamePacket, ServerboundSetCommandBlock, s_set_command_block::Mode,
 };
+use azalea::registry::builtin::BlockKind;
 use azalea::{BlockPos, Client};
 use discord::webhook_send;
 use parking_lot::Mutex;
@@ -24,7 +26,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let mut username = vec![];
 
@@ -115,15 +117,12 @@ impl Core {
         Ok(self.core_coordinates.clone())
     }
 }
-
 #[async_recursion]
 async fn execute(bot: &Client, command: &String, state: &State) -> anyhow::Result<()> {
     let coords = {
         let guard = state.core_generator.lock().await;
         guard.core_coordinates.clone()
     };
-
-    let mut core = state.core_generator.lock().await;
 
     let random_pos: Option<BlockPos> = if !coords.is_empty() {
         let mut rng = rng();
@@ -141,32 +140,29 @@ async fn execute(bot: &Client, command: &String, state: &State) -> anyhow::Resul
 
     if let Some(pos) = random_pos {
         if !is_bot_near(bot, pos, 1000 as f64) {
-            println!("could not exec bc not cblock");
-            let _ = core.gen_core_sync(bot);
-            return Ok(());
+            println!("regenerated because bot is far away from the core");
+            let _ = {
+                let mut core = state.core_generator.lock().await;
+                core.gen_core_sync(bot)?;
+            };
         }
-    }
 
-    if let Some(pos2) = random_pos {
         let block = bot
             .world()
             .read()
-            .get_block_state(pos2)
+            .get_block_state(pos)
             .unwrap_or(BlockState::default());
 
-        let needs_regen = {
-            let block_trait: Box<dyn BlockTrait> =
-                Box::<dyn azalea::block::BlockTrait>::from(block);
-            !block_trait.id().to_string().contains("command_block")
-        };
-
-        if needs_regen {
-            let _ = core.gen_core_sync(bot);
-            return Ok(());
-        } else {
+        let block_kind: BlockKind = block.into();
+        if block_kind != { BlockKind::CommandBlock } {
+            let _ = {
+                let mut core = state.core_generator.lock().await;
+                core.gen_core_sync(bot)?;
+            };
         }
+
         let p = ServerboundSetCommandBlock {
-            pos: pos2,
+            pos: pos,
             command: command.to_string(),
             mode: Mode::Auto,
             track_output: true,
@@ -174,12 +170,10 @@ async fn execute(bot: &Client, command: &String, state: &State) -> anyhow::Resul
             automatic: true,
         };
         bot.write_packet(p.clone());
-        println!("{:?}", &p);
-        Ok(())
-    } else {
-        println!("no coord!");
-        Err(anyhow::anyhow!("No coords"))
+        return Ok(());
     }
+
+    Ok(())
 }
 
 async fn tellraw(bot: &Client, message: &String, state: &State) -> anyhow::Result<()> {
@@ -362,8 +356,6 @@ impl BotCommand {
                     return Ok(());
                 }
                 if action == "start" {
-                    println!("I JUST TRIED TO START A LOOP!!!!!");
-
                     let (id_num, handle, text) = new_loop(
                         Arc::new(bot.clone()),
                         command.clone(),
@@ -477,7 +469,6 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
                 }
 
                 command.execute(&state, &bot, sender_uuid.clone()).await?;
-                println!("tried running smth");
             } else {
             }
             let game_mode = *bot.component::<LocalGameMode>();
@@ -515,18 +506,18 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
 
         Event::Packet(packet) => match &*packet {
             ClientboundGamePacket::BlockUpdate(p) => {
-                let coords = {
+                let block_kind: BlockKind = p.block_state.into();
+                let (coords, mut core) = {
                     let guard = state.core_generator.lock().await;
-                    guard.core_coordinates.clone()
+                    (guard.core_coordinates.clone(), guard.clone())
                 };
 
-                let needs_regen = {
-                    let block_trait = Box::<dyn azalea::block::BlockTrait>::from(p.block_state);
-                    coords.contains(&p.pos) && !block_trait.id().ends_with("command_block")
-                };
+                let needs_regen =
+                    { coords.contains(&p.pos) && block_kind != BlockKind::CommandBlock };
 
                 if needs_regen {
-                    safe_core_gen(&bot, &state).await;
+                    core.gen_core(&bot, &state).await?;
+                } else {
                 }
 
                 Ok(())
@@ -547,14 +538,6 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
 
         _ => Ok(()),
     }
-}
-
-async fn safe_core_gen(bot: &Client, state: &State) {
-    let _ = {
-        let mut guard = state.core_generator.lock().await;
-        let _ = guard.gen_core(bot, state).await;
-        ()
-    };
 }
 
 async fn advanced_tellraw(bot: &Client, state: &State, message: &String) -> Result<()> {
