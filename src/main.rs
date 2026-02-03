@@ -19,12 +19,10 @@ use discord::webhook_send;
 use parking_lot::Mutex;
 use rand::Rng;
 use rand::rng;
-use regex::Regex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
-use tokio::time::sleep;
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> anyhow::Result<()> {
@@ -184,13 +182,7 @@ async fn execute(bot: &Client, command: &String, state: &State) -> anyhow::Resul
     }
 }
 
-async fn tellraw(
-    bot: &Client,
-    message: &String,
-    coords: &Vec<BlockPos>,
-    core: Option<Core>,
-    state: &State,
-) -> anyhow::Result<()> {
+async fn tellraw(bot: &Client, message: &String, state: &State) -> anyhow::Result<()> {
     let tellraw = format!(
         r#"minecraft:tellraw @a [{{"text":"[","color":"{c1}","italic":false}},{{"text":"n","color":"{c2}","italic":false}},{{"text":"e","color":"{c3}","italic":false}},{{"text":"o","color":"{c4}","italic":false}},{{"text":"]","color":"{c5}","italic":false}},{{"text":" {msg}","color":"white"}}]"#,
         c1 = "#54daf4",
@@ -206,13 +198,7 @@ async fn tellraw(
     Ok(())
 }
 
-async fn login(
-    uuid: String,
-    code: String,
-    codes: &mut Vec<u32>,
-    _users: &mut Vec<String>,
-    state: &State,
-) -> bool {
+async fn login(uuid: String, code: String, _users: &mut Vec<String>, state: &State) -> bool {
     let mut codes = {
         let guard = state.used_codes.lock().await;
         guard.clone()
@@ -234,11 +220,10 @@ struct CbLoop {
     id_ref: Arc<AtomicI32>,
     command: String,
     delay: u64,
-    string: String,
 }
 
 impl CbLoop {
-    async fn start(&self, bot: &Client, coords: &Vec<BlockPos>, state: &State) -> Result<()> {
+    async fn start(&self, bot: &Client, state: &State) -> Result<()> {
         loop {
             if self.id_ref.load(Ordering::Relaxed) < 0 {
                 return Err(anyhow::anyhow!("must be positive"));
@@ -251,7 +236,6 @@ impl CbLoop {
 
 async fn new_loop(
     bot: Arc<Client>,
-    coords: Arc<Vec<BlockPos>>,
     command: String,
     delay: u64,
     state: &State,
@@ -271,11 +255,10 @@ async fn new_loop(
         id_ref: id_ref.clone(),
         command: command,
         delay: delay,
-        string: text.clone(),
     };
 
     let clone_state = state.clone();
-    tokio::spawn(async move { cb_loop.start(&bot, &coords, &clone_state).await });
+    tokio::spawn(async move { cb_loop.start(&bot, &clone_state).await });
     (highest_id as i32, id_ref, text)
 }
 
@@ -331,16 +314,7 @@ impl BotCommand {
         }
     }
 
-    async fn execute(
-        &self,
-        state: &State,
-        bot: &Client,
-        coords: &Vec<BlockPos>,
-        sender_uid: String,
-        codes: &mut Vec<u32>,
-        authenticated: &mut Vec<String>,
-        mut core: Core,
-    ) -> anyhow::Result<()> {
+    async fn execute(&self, state: &State, bot: &Client, sender_uid: String) -> anyhow::Result<()> {
         let mut loops = {
             let guard = state.loops.lock();
             guard.clone()
@@ -356,27 +330,20 @@ impl BotCommand {
             }
 
             BotCommand::AdvancedTellraw(message) => {
-                advanced_tellraw(bot, state, message).await;
+                advanced_tellraw(bot, state, message).await?;
             }
 
             BotCommand::Info => {
-                tellraw(
-                    bot,
-                    &"https://discord.gg/9zSgbreY".to_string(),
-                    coords,
-                    None,
-                    state,
-                )
-                .await;
+                tellraw(bot, &"https://discord.gg/9zSgbreY".to_string(), state).await?;
             }
 
-            BotCommand::Disable(user) => {
-                tellraw(bot, &"Coming soon".to_string(), coords, None, state).await;
+            BotCommand::Disable(_user) => {
+                tellraw(bot, &"Coming soon".to_string(), state).await?;
             }
 
             BotCommand::Light(user) => {
                 let command = format!("effect give {} night_vision infinite 0 true", user);
-                execute(bot, &command, state).await;
+                execute(bot, &command, state).await?;
             }
 
             BotCommand::Loop(action, delay, command) => {
@@ -388,8 +355,6 @@ impl BotCommand {
                     tellraw(
                         bot,
                         &"A loop with that id already exists!".to_string(),
-                        coords,
-                        Some(core.clone()),
                         state,
                     )
                     .await?;
@@ -401,7 +366,6 @@ impl BotCommand {
 
                     let (id_num, handle, text) = new_loop(
                         Arc::new(bot.clone()),
-                        Arc::new(coords.clone()),
                         command.clone(),
                         delay.parse::<u64>().unwrap(),
                         state,
@@ -414,14 +378,7 @@ impl BotCommand {
                         loops.push(handle.clone());
                         loop_text.push(text);
                     };
-                    tellraw(
-                        bot,
-                        &format!("Started loop {}", id_num),
-                        coords,
-                        Some(core),
-                        state,
-                    )
-                    .await?;
+                    tellraw(bot, &format!("Started loop {}", id_num), state).await?;
                 } else if action == "stop" {
                     let target_id = delay.parse::<i32>().unwrap();
 
@@ -440,45 +397,20 @@ impl BotCommand {
 
                             guard2.remove(pos);
                         };
-                        tellraw(
-                            bot,
-                            &format!("Stopped loop {}", target_id),
-                            coords,
-                            Some(core.clone()),
-                            state,
-                        )
-                        .await?;
+                        tellraw(bot, &format!("Stopped loop {}", target_id), state).await?;
                     }
                 }
             }
 
             BotCommand::Execute(cmd) => {
-                let coords_upd = {
-                    let guard = state.core_generator.lock().await;
-                    guard.core_coordinates.clone()
-                };
-
-                let core_upd = {
-                    let guard = state.core_generator.lock().await;
-                    guard.clone()
-                };
-
-                println!("{:?}", coords_upd);
-                tellraw(
-                    bot,
-                    &format!("running {}", cmd),
-                    &coords_upd,
-                    Some(core_upd.clone()),
-                    state,
-                )
-                .await?;
+                tellraw(bot, &format!("running {}", cmd), state).await?;
                 execute(bot, &cmd, state).await?;
             }
 
             BotCommand::Loops => {
                 for lp in loops_text.iter() {
                     println!("{}", lp);
-                    tellraw(bot, &*lp, coords, Some(core.clone()), state).await?;
+                    tellraw(bot, &*lp, state).await?;
                 }
             }
 
@@ -489,7 +421,7 @@ impl BotCommand {
                     &"<j>Commands <j>(*<c>8*<j>) <j>- <c>info, <c>help, <c>exe, <c>tellraw, <c>login, <c>loops, <y>core, <y>loop".to_string(),
 
                 )
-                .await;
+                .await?;
             }
 
             BotCommand::Kick(user) => {
@@ -502,28 +434,14 @@ impl BotCommand {
             }
 
             BotCommand::Tellraw(msg) => {
-                tellraw(bot, &msg, coords, Some(core), state).await?;
+                tellraw(bot, &msg, state).await?;
             }
 
             BotCommand::Login(code) => {
-                if login(sender_uid, code.clone(), &mut vec![], authenticated, state).await {
-                    tellraw(
-                        bot,
-                        &"Succesfully authenticated".to_string(),
-                        coords,
-                        Some(core),
-                        state,
-                    )
-                    .await?;
+                if login(sender_uid, code.clone(), &mut vec![], state).await {
+                    tellraw(bot, &"Succesfully authenticated".to_string(), state).await?;
                 } else {
-                    tellraw(
-                        bot,
-                        &"Couldn't authenticate".to_string(),
-                        coords,
-                        Some(core),
-                        state,
-                    )
-                    .await?;
+                    tellraw(bot, &"Couldn't authenticate".to_string(), state).await?;
                 }
             }
         }
@@ -540,18 +458,8 @@ async fn add_to_used_codes(code: u32, state: &State) {
 }
 
 async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
-    let mut authenticated = {
+    let authenticated = {
         let guard = state.auth_users.lock();
-        guard.clone()
-    };
-
-    let core = {
-        let core_guard = state.core_generator.lock().await;
-        core_guard.clone()
-    };
-
-    let mut codes = {
-        let guard = state.used_codes.lock().await;
         guard.clone()
     };
 
@@ -563,37 +471,14 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
                 let parts: Vec<&str> = message[2..].trim().split_whitespace().collect();
                 let command = BotCommand::parse(&parts);
                 let sender_uuid = m.sender_uuid().unwrap().to_string();
-                let coords = {
-                    let guard = state.core_generator.lock().await;
-                    guard.core_coordinates.clone()
-                };
                 if command.requires_auth() && !authenticated.contains(&sender_uuid) {
-                    tellraw(
-                        &bot,
-                        &"Woah, login first!".to_string(),
-                        &coords,
-                        Some(core.clone()),
-                        &state,
-                    )
-                    .await?;
+                    tellraw(&bot, &"Woah, login first!".to_string(), &state).await?;
                     return Ok(());
                 }
 
-                command
-                    .execute(
-                        &state,
-                        &bot,
-                        &coords,
-                        sender_uuid.clone(),
-                        &mut codes,
-                        &mut authenticated,
-                        core.clone(),
-                    )
-                    .await?;
+                command.execute(&state, &bot, sender_uuid.clone()).await?;
                 println!("tried running smth");
-                return Ok(());
             } else {
-                return Ok(());
             }
             let game_mode = *bot.component::<LocalGameMode>();
 
@@ -611,7 +496,7 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
             println!("Bot connected \n\n\n\n");
             let _ = {
                 let mut guard = state.core_generator.lock().await;
-                guard.gen_core_sync(&bot);
+                guard.gen_core_sync(&bot)?;
             };
             Ok(())
         }
@@ -648,10 +533,10 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
             }
 
             ClientboundGamePacket::EntityEvent(ClientboundEntityEvent {
-                entity_id,
+                entity_id: _,
                 event_id,
             }) => {
-                if *event_id == 24 as u8 {
+                if event_id.clone() == 24 as u8 {
                     bot.chat("/op @s[type=player]");
                 }
                 Ok(())
@@ -672,7 +557,7 @@ async fn safe_core_gen(bot: &Client, state: &State) {
     };
 }
 
-async fn advanced_tellraw(bot: &Client, state: &State, message: &String) {
+async fn advanced_tellraw(bot: &Client, state: &State, message: &String) -> Result<()> {
     let mut output: Vec<String> = vec![];
 
     let mut colors: HashMap<&str, &str> = HashMap::new();
@@ -702,5 +587,7 @@ async fn advanced_tellraw(bot: &Client, state: &State, message: &String) {
         }
     }
 
-    execute(bot, &format!("/tellraw @a [{}]", output.join(",")), state).await;
+    execute(bot, &format!("/tellraw @a [{}]", output.join(",")), state).await?;
+
+    Ok(())
 }
