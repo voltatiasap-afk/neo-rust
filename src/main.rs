@@ -154,7 +154,10 @@ async fn execute(bot: &Client, command: &String, state: &State) -> anyhow::Resul
             .unwrap_or(BlockState::default());
 
         let block_kind: BlockKind = block.into();
-        if block_kind != { BlockKind::CommandBlock } {
+        if block_kind != BlockKind::CommandBlock
+            && block_kind != BlockKind::RepeatingCommandBlock
+            && block_kind != BlockKind::ChainCommandBlock
+        {
             let _ = {
                 let mut core = state.core_generator.lock().await;
                 core.gen_core_sync(bot)?;
@@ -512,8 +515,12 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
                     (guard.core_coordinates.clone(), guard.clone())
                 };
 
-                let needs_regen =
-                    { coords.contains(&p.pos) && block_kind != BlockKind::CommandBlock };
+                let needs_regen = {
+                    coords.contains(&p.pos)
+                        && block_kind != BlockKind::RepeatingCommandBlock
+                        && block_kind != BlockKind::CommandBlock
+                        && block_kind != BlockKind::ChainCommandBlock
+                };
 
                 if needs_regen {
                     core.gen_core(&bot, &state).await?;
