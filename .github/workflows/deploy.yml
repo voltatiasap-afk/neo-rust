@@ -49,7 +49,7 @@ jobs:
         CARGO_NET_RETRY: "10"
         RUSTUP_MAX_RETRIES: "10"
       run: |
-        cargo +nightly build --release --locked --all-features
+        cargo +nightly build --release --all-features
         echo "::notice::SCCache stats:"
         sccache --show-stats || true
         
