@@ -20,6 +20,7 @@ use parking_lot::Mutex;
 use rand::Rng;
 use rand::rng;
 use regex::Regex;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI32, Ordering};
 use std::time::Duration;
@@ -294,6 +295,7 @@ enum BotCommand {
     Disable(String),
     Loops,
     Light(String),
+    AdvancedTellraw(String),
 }
 
 impl BotCommand {
@@ -317,6 +319,7 @@ impl BotCommand {
             "loops" => BotCommand::Loops,
             "light" => BotCommand::Light(args),
             "disable" => BotCommand::Disable(args),
+            "tellraw+" => BotCommand::AdvancedTellraw(args),
             _ => BotCommand::Help,
         }
     }
@@ -350,6 +353,10 @@ impl BotCommand {
         match &self {
             BotCommand::Core => {
                 //core.gen_core(bot, state).await?;
+            }
+
+            BotCommand::AdvancedTellraw(message) => {
+                advanced_tellraw(bot, state, message).await;
             }
 
             BotCommand::Info => {
@@ -476,23 +483,13 @@ impl BotCommand {
             }
 
             BotCommand::Help => {
-                tellraw(
+                advanced_tellraw(
                     bot,
-                    &"Requires authentication:\nloop, core, disable\n".to_string(),
-                    coords,
-                    Some(core),
                     state,
-                )
-                .await?;
+                    &"<j>Commands <j>(*<c>8*<j>) <j>- <c>info, <c>help, <c>exe, <c>tellraw, <c>login, <c>loops, <y>core, <y>loop".to_string(),
 
-                tellraw(
-                    bot,
-                    &"Public:\nexe, help, info, light".to_string(),
-                    coords,
-                    None,
-                    state,
                 )
-                .await?;
+                .await;
             }
 
             BotCommand::Kick(user) => {
@@ -562,22 +559,6 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
         Event::Chat(m) => {
             let message = m.content();
 
-            let op_regex = Regex::new(r"Made \b\w+\b no longer a server operator").unwrap();
-
-            if let Some(mat) = op_regex.find(&message) {
-                bot.chat(format!("/op {}", bot.username()));
-            }
-
-            let game_mode = *bot.component::<LocalGameMode>();
-
-            if game_mode.current != GameMode::Creative {
-                bot.chat("/gmc")
-            }
-
-            if !message.contains("Command set: ") {
-                webhook_send(format!("{}", m.message())).await;
-            }
-
             if message.starts_with("n:") {
                 let parts: Vec<&str> = message[2..].trim().split_whitespace().collect();
                 let command = BotCommand::parse(&parts);
@@ -614,6 +595,17 @@ async fn handle(bot: Client, event: Event, state: State) -> anyhow::Result<()> {
             } else {
                 return Ok(());
             }
+            let game_mode = *bot.component::<LocalGameMode>();
+
+            if game_mode.current != GameMode::Creative {
+                bot.chat("/gmc")
+            }
+
+            if !message.contains("Command set: ") {
+                webhook_send(format!("{}", m.message())).await;
+            }
+
+            Ok(())
         }
         Event::Spawn => {
             println!("Bot connected \n\n\n\n");
@@ -678,4 +670,36 @@ async fn safe_core_gen(bot: &Client, state: &State) {
         let _ = guard.gen_core(bot, state).await;
         ()
     };
+}
+
+async fn advanced_tellraw(bot: &Client, state: &State, message: &String) {
+    let mut output: Vec<String> = vec![];
+
+    let mut colors: HashMap<&str, &str> = HashMap::new();
+
+    colors.insert("<r>", "red");
+    colors.insert("<b>", "blue");
+    colors.insert("<c>", "aqua");
+    colors.insert("<y>", "yellow");
+    colors.insert("<g>", "green");
+    colors.insert("<j>", "gray");
+
+    for word in message.split(&[' ', '*'][..]).filter(|w| !w.is_empty()) {
+        if word.starts_with("<") && word.len() > 3 {
+            let text = &word[3..];
+            let tag = &word[..3];
+            if let Some(color) = colors.get(tag) {
+                output.push(
+                    format!(r#"{{"text":"{} ", "color":"{}"}}"#, text.to_string(), color)
+                        .to_string(),
+                );
+            }
+        } else {
+            output.push(
+                format!(r#"{{"text":"{} ", "color":"white"}}"#, word.to_string()).to_string(),
+            );
+        }
+    }
+
+    execute(bot, &format!("/tellraw @a [{}]", output.join(",")), state).await;
 }
