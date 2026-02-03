@@ -683,6 +683,7 @@ async fn advanced_tellraw(bot: &Client, state: &State, message: &String) {
     colors.insert("<y>", "yellow");
     colors.insert("<g>", "green");
     colors.insert("<j>", "gray");
+    colors.insert("<w>", "white");
 
     for word in message.split(&[' ', '*'][..]).filter(|w| !w.is_empty()) {
         if word.starts_with("<") && word.len() > 3 {
