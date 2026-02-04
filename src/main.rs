@@ -54,6 +54,9 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let server = std::env::var("SERVER").unwrap_or_else(|_| "kaboom.pw".to_string());
+    let token = std::env::var("TOKEN").expect("missing bot token");
+
+    println!("{:?}", token);
 
     let _state = State {
         core_generator: Arc::new(tokio::sync::Mutex::new(Core::default())),
@@ -65,16 +68,17 @@ async fn main() -> anyhow::Result<()> {
 
     let account = Account::offline(&random_str);
 
-    let discord_bridge = DiscordHandler {
-        minecraft_bot: bot,
-        state: _state.clone(),
-    };
-
-    let (bot) = ClientBuilder::new()
+    let (client) = ClientBuilder::new()
         .set_handler(handle)
         .start(account, server)
         .await;
 
+    let bot = Arc::new(client);
+
+    let discord_bridge = DiscordHandler {
+        minecraft_bot: bot,
+        state: Arc::new(_state),
+    };
     Ok(())
 }
 
