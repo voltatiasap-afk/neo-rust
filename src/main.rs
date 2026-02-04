@@ -331,7 +331,13 @@ impl BotCommand {
             }
 
             BotCommand::Info => {
-                tellraw(bot, &"https://discord.gg/9zSgbreY".to_string(), state).await?;
+                advanced_tellraw(
+                    bot,
+                    state,
+                    &"<blue>Join <blue>the <blue>discord: [https://discord.gg/9zSgbreY]"
+                        .to_string(),
+                )
+                .await?;
             }
 
             BotCommand::Disable(_user) => {
@@ -413,7 +419,7 @@ impl BotCommand {
                 advanced_tellraw(
                     bot,
                     state,
-                    &"<j>Commands <j>(*<c>8*<j>) <j>- <c>info, <c>help, <c>exe, <c>tellraw, <c>login, <c>loops, <y>core, <y>loop".to_string(),
+                    &"<gray>Commands <gray>(<aqua>8<gray>) <gray>- <aqua>info, <aqua>help, <aqua>exe, <aqua>tellraw, <aqua>login, <aqua>loops, <yellow>core, <yellow>loop".to_string(),
 
                 )
                 .await?;
@@ -560,22 +566,43 @@ async fn advanced_tellraw(bot: &Client, state: &State, message: &String) -> Resu
     colors.insert("<j>", "gray");
     colors.insert("<w>", "white");
 
-    for word in message.split(&[' ', '*'][..]).filter(|w| !w.is_empty()) {
-        if word.starts_with("<") && word.len() > 3 {
-            let text = &word[3..];
-            let tag = &word[..3];
-            if let Some(color) = colors.get(tag) {
-                output.push(
-                    format!(r#"{{"text":"{} ", "color":"{}"}}"#, text.to_string(), color)
-                        .to_string(),
-                );
-            }
-        } else {
-            output.push(
-                format!(r#"{{"text":"{} ", "color":"white"}}"#, word.to_string()).to_string(),
-            );
+    //kill me please
+    let regex = regex::Regex::new(r#"(?:\[([^\]]*)\])?(?:<([^>]*)*>)?([^<\[]*)"#)?;
+    for cap in regex.captures_iter(message) {
+        //TODO add logic here
+        let links = cap.get(1).map_or("", |m| m.as_str());
+        let color = cap.get(2).map_or("", |m| m.as_str());
+        let text = cap.get(3).map_or("", |m| m.as_str());
+
+        if !links.is_empty() {
+            output.push(format!(
+            r#"{{"text":"{}","color":"aqua","click_event":{{"action":"open_url","url":"{}"}}}}"#,
+            links, links.trim()
+        ));
+        }
+        if color.is_empty() {
+            output.push(format!(r#"{{"text":"{}","color":"white"}}"#, text));
+        }
+        if !color.is_empty() {
+            output.push(format!(r#"{{"text":"{}","color":"{}"}}"#, text, color));
         }
     }
+    // for word in message.split(&[' ', '*'][..]).filter(|w| !w.is_empty()) {
+    //     if word.starts_with("<") && word.len() > 3 {
+    //         let text = &word[3..];
+    //         let tag = &word[..3];
+    //         if let Some(color) = colors.get(tag) {
+    //             output.push(
+    //                 format!(r#"{{"text":"{} ", "color":"{}"}}"#, text.to_string(), color)
+    //                     .to_string(),
+    //             );
+    //         }
+    //     } else {
+    //         output.push(
+    //             format!(r#"{{"text":"{} ", "color":"white"}}"#, word.to_string()).to_string(),
+    //         );
+    //     }
+    // }
 
     execute(bot, &format!("/tellraw @a [{}]", output.join(",")), state).await?;
 
