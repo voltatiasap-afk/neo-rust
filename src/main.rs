@@ -274,6 +274,7 @@ enum BotCommand {
     Kick(String),
     Disable(String),
     Loops,
+    List,
     Light(String),
     AdvancedTellraw(String),
 }
@@ -293,6 +294,7 @@ impl BotCommand {
                 parts.get(2).unwrap_or(&"0").to_string(),
                 parts.get(3..).unwrap_or(&[]).join(" ").to_string(),
             ),
+            "list" => BotCommand::List,
             "kick" => BotCommand::Kick(args),
             "tellraw" => BotCommand::Tellraw(args),
             "login" => BotCommand::Login(args),
@@ -324,6 +326,16 @@ impl BotCommand {
         match &self {
             BotCommand::Core => {
                 //core.gen_core(bot, state).await?;
+            }
+
+            BotCommand::List => {
+                advanced_tellraw(
+                    bot,
+                    state,
+                    &"<gray>Players <gray>currently <gray>online:".to_string(),
+                )
+                .await?;
+                execute(bot, &"sudo * c:*".to_string(), state).await?;
             }
 
             BotCommand::AdvancedTellraw(message) => {
