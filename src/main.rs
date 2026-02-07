@@ -266,7 +266,7 @@ fn stop_loop(id_ref: Arc<AtomicI32>) {
 }
 
 enum BotCommand {
-    Help,
+    Help(String),
     Info,
     Core,
     Loop(String, String, String),
@@ -287,7 +287,7 @@ impl BotCommand {
         let args = parts[1..].join(" ");
 
         match command {
-            "help" => BotCommand::Help,
+            "help" => BotCommand::Help(args),
             "info" => BotCommand::Info,
             "core" => BotCommand::Core,
             "exe" => BotCommand::Execute(args),
@@ -304,7 +304,7 @@ impl BotCommand {
             "light" => BotCommand::Light(args),
             "disable" => BotCommand::Disable(args),
             "tellraw+" => BotCommand::AdvancedTellraw(args),
-            _ => BotCommand::Help,
+            _ => BotCommand::Help(String::from("")),
         }
     }
 
@@ -429,15 +429,59 @@ impl BotCommand {
                 }
             }
 
-            BotCommand::Help => {
-                advanced_tellraw(
+            BotCommand::Help(command) => match &command[..] {
+                "exe" => advanced_tellraw(
+                    bot,
+                    state,
+                    &"<aqua>Neo <gray>>> <aqua>Exe\\n<white>Executes a command in a command block"
+                        .to_string(),
+                )
+                .await?,
+
+                "tellraw" => {
+                    advanced_tellraw(bot, state, &"<aqua>Neo <gray>>> <aqua>tellraw(+)\\n<white>Regular version simply tellraws the given message to @a, the + version has minimessage-like syntax:\\n you can use square brackets to make clickable link and color words with <red> tags".to_string()).await?;
+                }
+
+                "info" => {
+                    advanced_tellraw(
+                        bot,
+                        state,
+                        &"<aqua>Neo <gray>>> <aqua>Info\\n<white>Shows the discord invite"
+                            .to_string(),
+                    )
+                    .await?;
+                }
+                "login" => {
+                    advanced_tellraw(
+                        bot,
+                        state,
+                        &"<<aqua>Neo <gray>>> aqua>Login\\n<white>Login using a totp. Not fully implemented yet"
+                            .to_string(),
+                    )
+                    .await?;
+                }
+                "loops" => {
+                    advanced_tellraw(
+                        bot,
+                        state,
+                        &"<aqua>Neo <gray>>> <aqua>loops\\n<white>Lists all command loops"
+                            .to_string(),
+                    )
+                    .await?;
+                }
+                "loop" => {
+                    advanced_tellraw(bot, state, &"<aqua>Neo <gray>>> <aqua>Loop\\n<gray>Usage: <green>start<gray>/(<green>stop, <green>id<gray>) <green>delay <green>command".to_string()).await?;
+                }
+                _ => {
+                    advanced_tellraw(
                     bot,
                     state,
                     &"<gray>Commands <gray>(<aqua>8<gray>) <gray>- <aqua>info, <aqua>help, <aqua>exe, <aqua>tellraw, <aqua>login, <aqua>loops, <yellow>core, <yellow>loop".to_string(),
 
                 )
                 .await?;
-            }
+                }
+            },
 
             BotCommand::Kick(user) => {
                 let repeated = "L".repeat(20000);
