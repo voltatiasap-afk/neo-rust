@@ -162,6 +162,8 @@ async fn execute(bot: &Client, command: &String, state: &State) -> anyhow::Resul
                 let mut core = state.core_generator.lock().await;
                 core.gen_core_sync(bot)?;
             };
+
+            tokio::time::sleep(Duration::from_millis(500)).await;
         }
 
         let p = ServerboundSetCommandBlock {
